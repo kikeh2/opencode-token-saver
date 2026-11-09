@@ -1,0 +1,30 @@
+// token-saver: reduce el consumo de tokens de este proyecto.
+// El plugin vive en .opencode/plugin/token-saver/ y se carga solo; este archivo
+// se creó automáticamente la primera vez que corrió.
+{
+  // Recorta espacios/tabs al final de línea y colapsa 3+ líneas vacías seguidas
+  // a una sola antes de aplicar write/edit. No toca la indentación.
+  "trimWhitespace": true,
+
+  // Corre el formatter correspondiente después de cada write/edit: el modelo
+  // escribe y el formatter deja la indentación prolija sin que el modelo tenga
+  // que regenerar el bloque entero por una sangría mal puesta.
+  "formatOnEdit": true,
+
+  // Bloquea el read de archivos ya leídos en esta sesión y sin cambios,
+  // devolviendo un mensaje corto en lugar de todo el contenido de nuevo.
+  "dedupeReads": true,
+
+  // Basenames que nunca conviene releer en la misma sesión (guías del agente).
+  "alwaysProtectedFiles": ["AGENTS.md", "CLAUDE.md", "SKILL.md"],
+
+  // Formatter por extensión de archivo; "$FILE" se reemplaza por la ruta real.
+  // Quitá una entrada para no formatear ese tipo de archivo.
+  "formatters": {
+    ".ts": ["bunx", "prettier", "--write", "$FILE"],
+    ".tsx": ["bunx", "prettier", "--write", "$FILE"],
+    ".js": ["bunx", "prettier", "--write", "$FILE"],
+    ".py": ["black", "$FILE"],
+    ".go": ["gofmt", "-w", "$FILE"]
+  }
+}
