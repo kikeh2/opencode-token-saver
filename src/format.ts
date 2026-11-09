@@ -1,20 +1,23 @@
 /**
- * Feature 2: formateo real post-write/edit.
+ * Feature 2: real formatting post-write/edit.
  *
- * El punto es no gastar tokens alineando indentación: el modelo escribe su
- * mejor bloque y un formatter externo (prettier, black, gofmt...) deja el
- * archivo prolijo sin que el modelo tenga que regenerar nada por una sangría
- * mal puesta.
+ * The point is not wasting tokens aligning indentation: the model writes its
+ * best block and an external formatter (prettier, black, gofmt...) leaves the
+ * file clean without the model having to regenerate anything over a misplaced
+ * indentation.
  *
- * Reglas:
- * - El comando se busca por extensión en config.formatters; sin entrada, no
- *   se hace nada (cero costo).
- * - "$FILE" se reemplaza por la ruta real del archivo.
- * - Se corre con el Bun Shell ($) interpolando cada token como argumento
- *   seguro: la interpolación de strings va escapada de fábrica, y un array
- *   interpolado se expande como argumentos separados sin riesgo de inyección.
- * - Uso .nothrow().quiet() para que un fallo (formatter no instalado, exit
- *   code != 0...) solo genere un warning y NUNCA rompa el flujo del tool.
+ * Rules:
+ * - Command is searched by extension in config.formatters; without entry, not
+ *   done (zero cost).
+ * - "$FILE" is replaced by real file path.
+ * - Runs with Bun Shell ($) interpolating each token as argument
+ *   safe: string interpolation is escaped by default, and an array
+ *   interpolated expands as separated arguments without injection risk.
+ * - Use .nothrow().quiet() so a failure (formatter not installed, exit
+ *   code != 0...) only generates a warning and NEVER breaks tool flow.
+ *
+ * Runs configured formatter for edited file extension.
+ * Never throws: any failure ends in console.warn.
  */
 import { $ } from "bun"
 import { dirname, extname } from "node:path"
@@ -26,7 +29,7 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
 
-/** Últimas líneas de stderr, para el warning (sin inundar el log). */
+/** Last lines of stderr, for warning (without flooding log). */
 function stderrTail(buffer: Buffer): string {
   return buffer
     .toString()
@@ -36,19 +39,8 @@ function stderrTail(buffer: Buffer): string {
     .join(" / ")
 }
 
-/** Binarios de formatter permitidos. Cualquier otro binario en el config
- *  se ignora con un warning: evita ejecución arbitraria vía token-saver.jsonc. */
-const ALLOWED_FORMATTER_BINS = new Set(["prettier", "black", "gofmt", "bunx"])
-
-/** Paquetes permitidos cuando el binario es un wrapper (bunx/npx). El primer
- *  argumento después del binario debe estar aquí, de lo contrario se rechaza
- *  el comando: evita ejecutar cualquier paquete de npm vía el config. */
-const ALLOWED_FORMATTER_PACKAGES = new Set(["prettier"])
-
-/**
- * Corre el formatter configurado para la extensión del archivo editado.
- * Nunca lanza: cualquier falla termina en un console.warn.
- */
+/** Runs formatter configured for edited file extension.
+ * Never throws: any failure ends in console.warn. */
 export async function formatFile(filePath: string, config: TokenSaverConfig): Promise<void> {
   const ext = extname(filePath).toLowerCase()
   const command = config.formatters[ext]
@@ -56,55 +48,58 @@ export async function formatFile(filePath: string, config: TokenSaverConfig): Pr
 
   const filled = command.map((part) => (part === FILE_PLACEHOLDER ? filePath : part))
   if (!filled.includes(filePath)) {
-    // Si el usuario no puso "$FILE" en el comando, un archivo adicional va
-    // de último argumento: así un mínimo comando del tipo ["gofmt", "-w"] funciona.
+    // If user didn't put "$FILE" in command, file goes as last argument:
+    // so a minimal command like ["gofmt", "-w"] works.
     filled.push(filePath)
   }
   const [bin, ...args] = filled
   if (bin === undefined) return
 
-  // Allowlist de binarios: solo ejecutamos comandos que ya conocemos.
+  // Allowlisted formatter binaries. Any other binary in config
+  // is ignored with warning: avoids arbitrary execution via token-saver.jsonc.
+  const ALLOWED_FORMATTER_BINS = new Set(["prettier", "black", "gofmt", "bunx"])
+
   if (!ALLOWED_FORMATTER_BINS.has(bin)) {
     console.warn(
-      `[token-saver] formatter "${bin}" no está en la allowlist de binarios permitidos ` +
+      `[token-saver] formatter "${bin}" not in allowlisted binaries ` +
         `(${Array.from(ALLOWED_FORMATTER_BINS).join(", ")}). ` +
-        `Ignorando el comando configurado para "${ext}" en .opencode/token-saver.jsonc.`,
+        `Ignoring command configured for "${ext}" in .opencode/token-saver.jsonc.`,
     )
     return
   }
 
-  // Si el binario es un wrapper de paquetes (bunx/npx), el paquete que
-  // ejecuta también tiene que estar en su propia allowlist, para evitar
-  // que el config dispare cualquier paquete de npm.
+  // If binary is a package wrapper (bunx/npx), the package it runs must
+  // also be in its own allowlist, to avoid config triggering any npm package.
+  const ALLOWED_FORMATTER_PACKAGES = new Set(["prettier"])
   if ((bin === "bunx" || bin === "npx") && args.length > 0) {
     const pkg = args[0]
     if (pkg === undefined || !ALLOWED_FORMATTER_PACKAGES.has(pkg)) {
       console.warn(
-        `[token-saver] el paquete "${pkg ?? "(desconocido)"}" de "${bin}" no está en la allowlist de paquetes permitidos ` +
-          `(${Array.from(ALLOWED_FORMATTER_PACKAGES).join(", ")}). ` +
-          `Ignorando el comando configurado para "${ext}" en .opencode/token-saver.jsonc.`,
+        `[token-saver] package "${pkg ?? "(unknown)"}" of "${bin}" not in allowlisted ` +
+          `packages (${Array.from(ALLOWED_FORMATTER_PACKAGES).join(", ")}). ` +
+          `Ignoring command configured for "${ext}" in .opencode/token-saver.jsonc.`,
       )
       return
     }
   }
 
-  // Capturamos el mtime antes de correr el formatter para detectar si el
-  // archivo fue modificado aunque el comando salga con error (posible corrupción).
+  // Capture mtime before running formatter to detect if file was modified
+  // although command exits with error (possible corruption).
   const { stat } = await import("node:fs/promises")
   let mtimeBefore: number | undefined
   try {
     const statsBefore = await stat(filePath)
     mtimeBefore = statsBefore.mtimeMs
   } catch {
-    // Si el archivo no existe aún, no hay nada que comparar.
+    // If file doesn't exist yet, nothing to compare.
   }
 
   try {
     const proc = await $`${bin} ${args}`
       .nothrow()
       .quiet()
-      // Cwd en la carpeta del archivo: los formatters descubren su config
-      // (.prettierrc, pyproject.toml...) hacia arriba, igual que haría el usuario.
+      // Cwd in file folder: formatters discover their config
+      // (.prettierrc, pyproject.toml...) upward, like the user would.
       .cwd(dirname(filePath))
 
     if (proc.exitCode !== 0) {
@@ -114,24 +109,24 @@ export async function formatFile(filePath: string, config: TokenSaverConfig): Pr
         try {
           const statsAfter = await stat(filePath)
           if (statsAfter.mtimeMs !== mtimeBefore) {
-            note = " ADVERTENCIA: el archivo fue modificado aunque el formatter salió con error; puede estar corrupto."
+            note = " WARNING: file was modified although formatter exited with error; may be corrupt."
           }
         } catch {
-          // No se pudo re-stat; seguimos sin nota adicional.
+          // Could not re-stat; continue without additional note.
         }
       }
       console.warn(
-        `[token-saver] formatter "${bin}" salió con código ${proc.exitCode} para "${ext}"` +
-          `${tail === "" ? "" : `: ${tail}`}${note}. Sigo sin formatear; revisá el comando en .opencode/token-saver.jsonc.`,
+        `[token-saver] formatter "${bin}" exited with code ${proc.exitCode} for "${ext}"` +
+          `${tail === "" ? "" : `: ${tail}`}${note}. Ignoring formatting; check command in .opencode/token-saver.jsonc.`,
       )
       return
     }
 
-    console.log(`[token-saver] formatter "${bin}" ok en "${filePath}".`)
+    console.log(`[token-saver] formatter "${bin}" ok in "${filePath}".`)
   } catch (error) {
     console.warn(
-      `[token-saver] no pude correr el formatter "${bin}" para "${ext}": ` +
-        `${errorMessage(error)}. Sigo sin romper el flujo.`,
+      `[token-saver] could not run formatter "${bin}" for "${ext}": ` +
+        `${errorMessage(error)}. Continuing without breaking flow.`,
     )
   }
 }

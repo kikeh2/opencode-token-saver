@@ -1,11 +1,11 @@
 /**
- * Config de token-saver: lee `.opencode/token-saver.jsonc`.
+ * token-saver config: reads `.opencode/token-saver.jsonc`.
  *
- * Reglas:
- * - El archivo admite JSONC (comentarios de línea "//" y de bloque C-style).
- * - Si falta el archivo, se crea con los defaults. Nunca tira error por eso.
- * - Si el archivo existe pero es inválido, se loguea un warning y se usan los
- *   defaults sin sobreescribir el archivo del usuario.
+ * Rules:
+ * - The file supports JSONC (line comments "//" and block C-style).
+ * - If missing, it's created with defaults. Never throws error for that.
+ * - If file exists but is invalid, a warning is logged and defaults are
+ *   used without overwriting the user's file.
  */
 import { mkdir, readFile, writeFile } from "node:fs/promises"
 import { dirname, resolve } from "node:path"
@@ -33,29 +33,29 @@ export const DEFAULT_CONFIG: TokenSaverConfig = {
   },
 }
 
-/** Contenido con el que se crea el archivo la primera vez. */
-export const DEFAULT_CONFIG_JSONC = `// token-saver: reduce el consumo de tokens de este proyecto.
-// El plugin vive en .opencode/plugin/token-saver/ y se carga solo; este archivo
-// se creó automáticamente la primera vez que corrió.
+/** Content used to create the file the first time. */
+export const DEFAULT_CONFIG_JSONC = `// token-saver: reduces token consumption of this project.
+// The plugin lives in .opencode/plugin/token-saver/ and loads alone; this file
+// was created automatically the first time it ran.
 {
-  // Recorta espacios/tabs al final de línea y colapsa 3+ líneas vacías seguidas
-  // a una sola antes de aplicar write/edit. No toca la indentación.
+  // Trims spaces/tabs at end of line and collapses 3+ consecutive blank lines
+  // to one before applying write/edit. Does not touch indentation.
   "trimWhitespace": true,
 
-  // Corre el formatter correspondiente después de cada write/edit: el modelo
-  // escribe y el formatter deja la indentación prolija sin que el modelo tenga
-  // que regenerar el bloque entero por una sangría mal puesta.
+  // Runs corresponding formatter after each write/edit: the model
+  // writes and formatter leaves indentation clean so the model doesn't
+  // have to regenerate the whole block over a misplaced indent.
   "formatOnEdit": true,
 
-  // Bloquea el read de archivos ya leídos en esta sesión y sin cambios,
-  // devolviendo un mensaje corto en lugar de todo el contenido de nuevo.
+  // Blocks read of already read files in this session without changes,
+  // returning a short message instead of all the content again.
   "dedupeReads": true,
 
-  // Basenames que nunca conviene releer en la misma sesión (guías del agente).
+  // Basenames never worth re-reading in same session (agent guides).
   "alwaysProtectedFiles": ["AGENTS.md", "CLAUDE.md", "SKILL.md"],
 
-  // Formatter por extensión de archivo; "$FILE" se reemplaza por la ruta real.
-  // Quitá una entrada para no formatear ese tipo de archivo.
+  // Formatter by file extension; "$FILE" is replaced by real path.
+  // Remove an entry to not format that file type.
   "formatters": {
     ".ts": ["bunx", "prettier", "--write", "$FILE"],
     ".tsx": ["bunx", "prettier", "--write", "$FILE"],
@@ -67,24 +67,24 @@ export const DEFAULT_CONFIG_JSONC = `// token-saver: reduce el consumo de tokens
 `
 
 /**
- * Directorio `.opencode/` que contiene este plugin: el config vive ahí,
- * independientemente del directorio de la sesión que lo cargó.
+ * `.opencode/` directory containing this plugin: config lives there,
+ * independently of the session directory that loaded it.
  */
 export function configDirectory(): string {
-  // `../..` desde el archivo de este módulo (.opencode/plugin/token-saver/).
+  // `../..` from this module file (.opencode/plugin/token-saver/).
   return resolve(fileURLToPath(new URL("../../", import.meta.url)))
 }
 
-/** Ruta del config: `<.opencode>/token-saver.jsonc`. */
+/** Config path: `<.opencode>/token-saver.jsonc`. */
 export function configPath(): string {
   return resolve(configDirectory(), "token-saver.jsonc")
 }
 
-/** Quita comentarios y trailing commas dejando JSON parseble. */
+/** Removes comments and trailing commas leaving parseable JSON. */
 export function stripJsoncComments(source: string): string {
   const out: string[] = []
   let i = 0
-  let quote: '"' | "'" | undefined // JSON solo usa '"', pero tolero ambos.
+  let quote: '"' | "'" | undefined // JSON only uses '"', but I tolerate both.
 
   while (i < source.length) {
     const c = source[i]
@@ -110,12 +110,12 @@ export function stripJsoncComments(source: string): string {
       continue
     }
 
-    // Comentario de línea: saltar hasta el fin de la línea.
+    // Line comment: skip to end of line.
     if (c === "/" && next === "/") {
       while (i < source.length && source[i] !== "\n") i++
       continue
     }
-    // Comentario de bloque: saltar hasta el cierre.
+    // Block comment: skip to closing.
     if (c === "/" && next === "*") {
       i += 2
       while (i < source.length && !(source[i] === "*" && source[i + 1] === "/")) i++
@@ -142,13 +142,13 @@ function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((item) => typeof item === "string")
 }
 
-/** Normaliza la key de un formatter a forma ".ext" minúscula. */
+/** Normalizes formatter key to ".ext" lowercase form. */
 function normalizeExtKey(key: string): string {
   const trimmed = key.trim().toLowerCase()
   return trimmed.startsWith(".") ? trimmed : `.${trimmed}`
 }
 
-/** Merge tolerante: cada campo inválido cae a su valor default. */
+/** Tolerant merge: each invalid field falls back to default. */
 export function normalizeConfig(value: unknown): TokenSaverConfig {
   const raw = isRecord(value) ? value : {}
   const config = freshDefaults()
@@ -163,7 +163,7 @@ export function normalizeConfig(value: unknown): TokenSaverConfig {
       if (isStringArray(command) && command.length > 0) {
         config.formatters[normalizeExtKey(key)] = command
       } else {
-        console.warn(`[token-saver] formatter inválido en el config para "${key}"; lo ignoré.`)
+        console.warn(`[token-saver] invalid formatter in config for "${key}"; ignored.`)
       }
     }
   }
@@ -175,7 +175,7 @@ function isMissingFile(error: unknown): boolean {
   return isRecord(error) && (error as { code?: unknown }).code === "ENOENT"
 }
 
-/** Defaults frescos (copia, para que mutar el formatters no pise el BASE). */
+/** Fresh defaults (copy so mutating formatters doesn't overwrite base). */
 function freshDefaults(): TokenSaverConfig {
   return {
     ...DEFAULT_CONFIG,
@@ -186,12 +186,12 @@ function freshDefaults(): TokenSaverConfig {
 async function createDefaultConfigFile(path: string): Promise<void> {
   await mkdir(dirname(path), { recursive: true })
   await writeFile(path, DEFAULT_CONFIG_JSONC, "utf8")
-  console.log(`[token-saver] no existía "${path}"; lo creé con los defaults.`)
+  console.log(`[token-saver] no existed "${path}"; created with defaults.`)
 }
 
 /**
- * Carga el config del path dado. Si falta, crea el archivo default una vez.
- * Si está corrupto, avisa y sigue con los defaults (nunca explota el server).
+ * Loads config from given path. If missing, creates default file once.
+ * If corrupt, warns and continues with defaults (never crashes server).
  */
 export async function loadConfig(path: string = configPath()): Promise<TokenSaverConfig> {
   let raw: string
@@ -203,13 +203,13 @@ export async function loadConfig(path: string = configPath()): Promise<TokenSave
         await createDefaultConfigFile(path)
       } catch (createError) {
         console.warn(
-          `[token-saver] no pude crear el config default en "${path}": ` +
-            `${createError instanceof Error ? createError.message : String(createError)}; uso defaults.`,
+          `[token-saver] could not create default config at "${path}": ` +
+            `${createError instanceof Error ? createError.message : String(createError)}; using defaults.`,
         )
       }
       return freshDefaults()
     }
-    console.warn(`[token-saver] no pude leer "${path}"; uso defaults.`)
+    console.warn(`[token-saver] could not read "${path}"; using defaults.`)
     return freshDefaults()
   }
 
@@ -217,8 +217,8 @@ export async function loadConfig(path: string = configPath()): Promise<TokenSave
     return normalizeConfig(parseJsonc(raw))
   } catch (error) {
     console.warn(
-      `[token-saver] "${path}" es JSONC inválido ` +
-        `(${error instanceof Error ? error.message : String(error)}); uso defaults sin pisarlo.`,
+      `[token-saver] "${path}" is invalid JSONC ` +
+        `(${error instanceof Error ? error.message : String(error)}); using defaults without overwriting.`,
     )
     return freshDefaults()
   }

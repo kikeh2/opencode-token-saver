@@ -1,14 +1,16 @@
-# Sesión CON plugin - token-saver (Traducción Python a Rust)
+# Session CON plugin — token-saver (Python to Rust Translation)
 
 - **Session ID:** ses-rust-con-plugin
-- **Modelo:** beam-free
-- **Archivo objetivo:** /home/dan/Pictures/calculador_tokens_copia.py (copia)
-- **Input tokens:** 13932
-- **Output tokens:** 2026
-- **Total tokens:** 15958
+- **Model:** beam-free
+- **Target file:** `<your-project>/calculador_tokens_copia.py` (copy)
+- **Input tokens:** 13,932
+- **Output tokens:** 2,026
+- **Total tokens:** 15,958
 
-## Conversación
+## Conversation
 
-### Unknown
+### Assistant
 
-Se creó `/home/dan/Pictures/calculador_tokens_copia.rs` con la lógica equivalente en Rust (funciones `estimar_tokens` y `sumar_dos_numeros`), compilando y produciendo salida idéntica al Python original. El archivo Python no fue modificado.
+Created `<your-project>/calculador_tokens_copia.rs` with equivalent Rust
+logic (functions `estimar_tokens` and `sumar_dos_numeros`), compiling and
+producing output identical to the Python original. Python file was not modified.

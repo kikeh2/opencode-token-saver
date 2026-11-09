@@ -1,14 +1,18 @@
-# Sesión SIN plugin - Traducción Python a Rust
+# Session SIN plugin — Python to Rust Translation
 
 - **Session ID:** ses-rust-sin-plugin
-- **Modelo:** beam-free
-- **Archivo objetivo:** /home/dan/Pictures/calculador_tokens.py (original)
-- **Input tokens:** 30920
-- **Output tokens:** 3304
-- **Total tokens:** 34224
+- **Model:** beam-free
+- **Target file:** `<your-project>/calculador_tokens.py` (original)
+- **Input tokens:** 30,920
+- **Output tokens:** 3,304
+- **Total tokens:** 34,224
 
-## Conversación
+## Conversation
 
-### Unknown
+### Assistant
 
-Se tradujo `/home/dan/Pictures/calculador_tokens.py` a Rust en `/home/dan/Pictures/calculador_tokens.rs`, manteniendo la misma lógica y los nombres de funciones (`estimar_tokens`, `main`, `sumar_dos_numeros`). El archivo compila sin warnings y su salida coincide exactamente con la del script Python (probado con archivo de texto, error de archivo inexistente y error de valor numérico). El original de Python no se modificó.
+Translated `<your-project>/calculador_tokens.py` to Rust in
+`<your-project>/calculador_tokens.rs`, keeping the same logic and function
+names (`estimar_tokens`, `main`, `sumar_dos_numeros`). File compiles without
+warnings and output matches exactly the Python script (tested with text file,
+missing file error, and numeric value error). Original Python was not modified.

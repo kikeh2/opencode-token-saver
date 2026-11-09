@@ -1,39 +1,39 @@
 /**
- * Trim seguro de whitespace sobre el contenido que el modelo escribe.
+ * Trim safe whitespace on content the model writes.
  *
- * Qué hace:
- * - Quita espacios/tabs al final de cada línea.
- * - Colapsa 3+ líneas vacías consecutivas a 1 sola.
- * - Para write (archivo entero): asegura que termine en un solo "\n".
+ * What it does:
+ * - Trims spaces/tabs at end of each line.
+ * - Collapses 3+ consecutive blank lines to 1.
+ * - For write (whole file): ensures it ends with a single "\n".
  *
- * Qué NO hace a propósito:
- * - No toca nunca la indentación al inicio de línea: es semántica del código,
- *   no sobrante. El formatter real (format.ts) arregla eso si hay problema.
+ * What it does NOT do on purpose:
+ * - Never touches indentation at start of line: it's code semantics,
+ *   not surplus. The real formatter (format.ts) fixes that if there's a problem.
  */
 
-/** "[ \t]" justo antes de un salto → nada; y trailing real al fin del texto. */
+/** "[ \t]" right before a jump → nothing; and real trailing at end of text. */
 const TRAILING_BEFORE_BREAK = /[ \t]+(?=\n)/g
 const TRAILING_AT_EOF = /[ \t]+$/
 
 /**
- * 4+ saltos consecutivos equivalen a 3+ líneas vacías seguidas, y quedan
- * reducidos a 2 saltos = 1 única línea vacía entre contenido.
+ * 4+ consecutive jumps equal 3+ consecutive blank lines, and remain
+ * reduced to 2 jumps = 1 single blank line between content.
  */
 const BLANK_LINES = /\n{4,}/g
 
-/** Quita espacios/tabs al final de cada línea, sin tocar el inicio. */
+/** Trims spaces/tabs at end of each line, without touching the start. */
 export function trimTrailingPerLine(content: string): string {
   return content.replace(TRAILING_BEFORE_BREAK, "").replace(TRAILING_AT_EOF, "")
 }
 
-/** 3+ líneas vacías consecutivas → 1 sola. */
+/** 3+ consecutive blank lines → 1. */
 export function collapseBlankLines(content: string): string {
   return content.replace(BLANK_LINES, "\n\n")
 }
 
 /**
- * Contenido completo de un write: trim + collapse + cerrar en un único "\n".
- * El archivo vacío se queda vacío (el usuario puede querer vaciar un archivo).
+ * Complete content of a write: trim + collapse + close with single "\n".
+ * Empty file stays empty (user may want to empty a file).
  */
 export function trimWriteContent(content: string): string {
   if (content === "") return content
@@ -43,10 +43,10 @@ export function trimWriteContent(content: string): string {
 }
 
 /**
- * Texto de un "newString" de edit: trim + collapse, pero SIN forzar salto
- * final: es un fragmento que va en medio del archivo, no un archivo entero.
- * El "oldString" no se procesa nunca acá: tiene que matchear el archivo
- * real letra por letra y cualquier cambio lo haría fallar el edit.
+ * Text of an "newString" of edit: trim + collapse, but WITHOUT forcing
+ * newline final: it's a fragment that goes in middle of file, not whole file.
+ * The "oldString" is never processed here: it must match file letter by
+ * letter and any change would make edit fail.
  */
 export function trimEditString(value: string): string {
   if (value === "") return value

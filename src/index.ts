@@ -1,15 +1,15 @@
 /**
- * token-saver: plugin de OpenCode para gastar menos tokens.
+ * token-saver: OpenCode plugin to save tokens.
  *
- * API usada (v2, paquete @opencode/plugin):
- * - `ctx.tool.hook("execute.before")` → equivale al hook v1 "tool.execute.before":
- *   corre ANTES de que el tool se ejecute y recibe el evento con `event.input`.
- * - `ctx.tool.hook("execute.after")` → equivale a "tool.execute.after":
- *   corre DESPUÉS, con `event.status` en "completed" o "error".
+ * API used (v2, @opencode/plugin package):
+ * - `ctx.tool.hook("execute.before")` → equivalent to v1 hook "tool.execute.before":
+ *   runs BEFORE the tool executes and receives event with `event.input`.
+ * - `ctx.tool.hook("execute.after")` → equivalent to v1 hook "tool.execute.after":
+ *   runs AFTER, with `event.status` in "completed" or "error".
  *
- * Los tres features son independientes y cada uno se apaga desde el config
- * (.opencode/token-saver.jsonc). Solo atiende los tools "edit", "write" y
- * "read"; cualquier otro tool pasa de largo y sigue su curso normal.
+ * The three features are independent and each can be turned off from config
+ * (.opencode/token-saver.jsonc). Only handles tools "edit", "write" and
+ * "read"; any other tool passes through normally.
  */
 import { Plugin } from "@opencode/plugin"
 import { isAbsolute, resolve, relative } from "node:path"
@@ -18,15 +18,15 @@ import { trimEditString, trimWriteContent } from "./whitespace"
 import { formatFile } from "./format"
 import { assertFreshRead, recordRead, statFile } from "./dedupe-read"
 
-/** Args crudos de cualquier tool: objeto con claves libres. */
+/** Raw args of any tool: object with free keys. */
 type ToolArgs = Record<string, unknown>
 
-/** Narrow de `event.input` (unknown) a args de tool, sin `any`. */
+/** Narrow `event.input` (unknown) to tool args, without `any`. */
 function asArgs(value: unknown): ToolArgs | undefined {
   return typeof value === "object" && value !== null ? (value as ToolArgs) : undefined
 }
 
-/** Lee un campo string no vacío de los args del tool. */
+/** Reads a non-empty string field from tool args. */
 function getStringArg(args: ToolArgs | undefined, field: string): string | undefined {
   const value = args?.[field]
   return typeof value === "string" && value.trim() !== "" ? value : undefined
@@ -39,9 +39,9 @@ export default Plugin.define({
 
     const projectDir = ctx.location.directory
     /**
-     * Resuelve la ruta del tool y verifica que quede dentro del directorio del
-     * proyecto. Devuelve null si el path escaparía (path traversal o symlink
-     * hacia fuera), para no hacer stat/cache de archivos ajenos.
+     * Resolves the tool path and verifies it stays within project dir.
+     * Returns null if path escapes (path traversal or symlink outside),
+     * to avoid stat/cache of external files.
      */
     const canonicalPath = (filePath: string): string | null => {
       const resolved = isAbsolute(filePath) ? filePath : resolve(projectDir, filePath)
@@ -51,33 +51,33 @@ export default Plugin.define({
     }
 
     if (config.trimWhitespace) {
-      // FEATURE 1 — trim de whitespace antes de write/edit.
-      // Por qué: el modelo malgasta tokens escribiendo trailing spaces o
-      // montañas de líneas en blanco. Recortar acá es bytes del archivo,
-      // no de la respuesta del modelo.
+      // FEATURE 1 — whitespace trim before write/edit.
+      // Why: the model wastes tokens writing trailing spaces or
+      // mountains of blank lines. Trimming here saves file bytes,
+      // not model response bytes.
       await ctx.tool.hook("execute.before", (event) => {
         if (event.tool !== "write" && event.tool !== "edit") return
         const args = asArgs(event.input)
         if (args === undefined) return
 
-        // write: el contenido es el archivo entero, así que además cierro
-        // garantizando exactamente un salto final.
+        // write: content is the whole file, so I also close
+        // ensuring exactly one final newline.
         if (event.tool === "write" && typeof args.content === "string") {
           const trimmed = trimWriteContent(args.content)
           if (trimmed !== args.content) {
-            // "input" del evento es mutable: editar acá cambia lo que el
-            // tool real va a escribir. Los demás campos van sin copiar.
+            // "input" of event is mutable: editing here changes what
+            // the real tool will write. Other fields copied as-is.
             event.input = { ...args, content: trimmed }
             const saved = args.content.length - trimmed.length
             console.log(
-              `[token-saver] write: recorté ${saved} chars de whitespace${typeof args.filePath === "string" ? ` en "${args.filePath}"` : ""}.`,
+              `[token-saver] write: trimmed ${saved} chars of whitespace${typeof args.filePath === "string" ? ` in "${args.filePath}"` : ""}.`,
             )
           }
         }
 
-        // edit: solo newString. El oldString NO se toca: tiene que matchear
-        // el archivo real letra por letra, y cualquier cambio lo haría
-        // fallar el edit al no encontrar el texto.
+        // edit: only newString. oldString is NOT touched: it must match
+        // the real file letter by letter, and any change would make
+        // the edit fail by not finding the text.
         if (event.tool === "edit" && typeof args.newString === "string") {
           const trimmed = trimEditString(args.newString)
           if (trimmed !== args.newString) {
@@ -88,10 +88,10 @@ export default Plugin.define({
     }
 
     if (config.formatOnEdit) {
-      // FEATURE 2 — formatter real después de write/edit.
-      // Por qué: acá se decide la indentación final. El modelo escribe lo
-      // mejor que puede y el formatter hace la prolijidad, sin que el LLM
-      // tenga que regenerar el bloque entero por una sangría mal puesta.
+      // FEATURE 2 — real formatter after write/edit.
+      // Why: this is where final indentation is decided. The model writes
+      // its best attempt, and the formatter makes it clean — so the LLM
+      // doesn't have to regenerate the whole block over a misplaced indent.
       await ctx.tool.hook("execute.after", async (event) => {
         if (event.status !== "completed") return
         if (event.tool !== "write" && event.tool !== "edit") return
@@ -104,10 +104,10 @@ export default Plugin.define({
     }
 
     if (config.dedupeReads) {
-      // FEATURE 3a — antes de un read: bloquear relecturas inútiles.
-      // Por qué: un read repetido vuelve a meter el archivo entero en el
-      // contexto. Con stat() (mtime + size, rapidísimo, sin leer contenido)
-      // me doy cuenta de si ya lo tenemos vivo para tirar el throw corto.
+      // FEATURE 3a — before read: block useless re-reads.
+      // Why: a repeated read puts the whole file back into context.
+      // With stat() (mtime + size, very fast, without reading content)
+      // I realize if we already have it live to throw the short error.
       await ctx.tool.hook("execute.before", async (event) => {
         if (event.tool !== "read") return
         const filePath = getStringArg(asArgs(event.input), "filePath")
@@ -116,11 +116,11 @@ export default Plugin.define({
         if (resolved === null) return
 
         const info = await statFile(resolved)
-        if (info === undefined) return // no existe: el read va a fallar por derecho propio
+        if (info === undefined) return // doesn't exist: read will fail on its own
         assertFreshRead(config, event.sessionID, resolved, info)
       })
 
-      // FEATURE 3b — después de un read exitoso: registrar mtime nuevo.
+      // FEATURE 3b — after successful read: register new mtime.
       await ctx.tool.hook("execute.after", async (event) => {
         if (event.status !== "completed" || event.tool !== "read") return
         const filePath = getStringArg(asArgs(event.input), "filePath")
@@ -132,7 +132,7 @@ export default Plugin.define({
       })
     }
 
-    // Las registrations viven mientras el plugin esté cargado; no hace falta
-    // dispose ahora. Si el plugin se descarga, OpenCode las libera solo.
+    // Registrations live while plugin is loaded; no need
+    // dispose now. If plugin unloads, OpenCode disposes them automatically.
   },
 })

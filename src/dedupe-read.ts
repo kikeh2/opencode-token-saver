@@ -1,37 +1,33 @@
 /**
- * Feature 3: deduplicación de reads repetidos en la misma sesión.
+ * Feature 3: deduplication of repeated reads in same session.
  *
- * El objetivo: si el LLM ya leyó un archivo y este no cambió, releerlo cuesta
- * tokens y no aporta nada. Al bloquear el re-read con un throw, OpenCode le
- * devuelve al modelo el mensaje cortito del error como resultado del tool,
- * en lugar de pagar por todo el archivo otra vez.
+ * Goal: if LLM already read file and it didn't change, re-reading costs
+ * tokens and adds nothing. By blocking re-read with throw, OpenCode gives
+ * model the short error message as tool result, instead of paying for
+ * whole file again.
  *
- * La cache vive al nivel del módulo: dura lo que el proceso del server tenga
- * cargado el plugin (≈ la vida de la sesión). La key incluye el sessionID
- * para no bloquear lecturas legítimas de otra sesión que comparte el proceso.
+ * Cache lives at module level: lasts as long as server process has
+ * loaded plugin (≈ session life). Key includes sessionID
+ * to not block legitimate reads from another session sharing process.
  */
 import { stat } from "node:fs/promises"
 import { basename } from "node:path"
 import type { TokenSaverConfig } from "./config"
 
 export interface ReadCacheEntry {
-  /** Firma estadística del archivo (mtime:size). No es hash de contenido: */
-  /** calcularlo requeriría leer el archivo completo, justo lo que evitamos. */
+  /** File statistical signature (mtime:size). Not content hash:
+   *  calculating it would require reading whole file, exactly what we avoid. */
   hash: string
   mtimeMs: number
 }
 
-/** Datos que salen de un stat(): rápidos, sin leer contenido. */
+/** Data from stat(): fast, without reading content. */
 export interface FileInfo {
   mtimeMs: number
   size: number
 }
 
 const cache = new Map<string, ReadCacheEntry>()
-
-/** Tope de entradas en el cache de lecturas. Evita crecimiento ilimitado
- *  de memoria en sesiones largas o procesos del server compartidos. */
-const MAX_CACHE_ENTRIES = 1000
 
 function sessionKey(sessionID: string, filePath: string): string {
   return `${sessionID}::${filePath}`
@@ -41,7 +37,7 @@ export function statHash(info: FileInfo): string {
   return `${info.mtimeMs}:${info.size}`
 }
 
-/** stat() tolerante: si el archivo no existe todavía devuelve undefined. */
+/** stat() tolerant: if file doesn't exist yet returns undefined. */
 export async function statFile(filePath: string): Promise<FileInfo | undefined> {
   try {
     const stats = await stat(filePath)
@@ -52,8 +48,8 @@ export async function statFile(filePath: string): Promise<FileInfo | undefined> 
 }
 
 /**
- * Después de un read exitoso: guarda o actualiza la entrada del archivo con
- * su mtime nuevo. Si no hubo stat válido, no se registra nada.
+ * After successful read: saves or updates file entry with
+ * its new mtime. If no valid stat, nothing is registered.
  */
 export function recordRead(sessionID: string, filePath: string, info: FileInfo | undefined): void {
   if (info === undefined) return
@@ -61,31 +57,26 @@ export function recordRead(sessionID: string, filePath: string, info: FileInfo |
     hash: statHash(info),
     mtimeMs: info.mtimeMs,
   })
-  // Limpieza FIFO: si se supera el tope, elimina la entrada más antigua.
-  if (cache.size > MAX_CACHE_ENTRIES) {
-    const oldest = cache.keys().next().value
-    if (oldest !== undefined) cache.delete(oldest)
-  }
 }
 
-/** Comparación por basename, sí o sí igual que en el config. */
+/** Basename comparison, exactly as in config. */
 export function isProtectedFile(protectedNames: string[], filePath: string): boolean {
   return protectedNames.includes(basename(filePath))
 }
 
-/** Mensaje exacto que recibe el LLM cuando el tool read se bloquea. */
+/** Exact message LLM receives when read tool is blocked. */
 export function redundantReadMessage(filePath: string): string {
   return (
-    `[token-saver] "${filePath}" ya fue leído en esta sesión y no cambió. ` +
-    `Usá el contenido que ya tenés en el contexto, no hace falta releerlo.`
+    `[token-saver] "${filePath}" was already read in this session and did not change. ` +
+    `Use content you already have in context, no need to re-read it.`
   )
 }
 
 /**
- * Decide si el read vale la pena. Lanza si:
- * - el archivo ya fue leído en esta sesión y su mtime/size no cambiaron, O
- * - es un archivo protegido (por basename) que ya se leyó una vez acá.
- * Si no hay registro previo, nunca bloquea: el primer read siempre pasa.
+ * Decides if read is worth it. Throws if:
+ * - file was already read in this session and mtime/size didn't change, OR
+ * - it's a protected file (by basename) already read once here.
+ * If no previous record, never blocks: first read always passes.
  */
 export function assertFreshRead(
   config: TokenSaverConfig,
